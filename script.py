@@ -7,9 +7,10 @@ from scipy.special import factorial
 from tensorflow import keras
 from tensorflow.keras import layers
 import warnings
+
 warnings.filterwarnings('ignore')
 
-# 1. Configuración de URL base y credenciales oficiales
+# Configuración general
 API_KEY = os.environ.get("THE_STATS_API_KEY")
 BASE_URL = "https://api.thestatsapi.com/api"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
@@ -17,7 +18,6 @@ HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 
-# Configuración de modelos ML
 LSTM_LOOKBACK = 5
 LSTM_UNITS = 32
 EPOCHS = 50
@@ -83,7 +83,7 @@ def formatear_mensaje_resultado(partidos_filtrados, date_from, date_to):
 
 
 class PoissonBivariadoModel:
-    """Modelo de Distribución Bivariada de Poisson para predecir correlación de goles."""
+    """Modelo de Distribución Bivariada de Poisson para correlación de goles."""
     def __init__(self):
         self.lambda_home = 0
         self.lambda_away = 0
