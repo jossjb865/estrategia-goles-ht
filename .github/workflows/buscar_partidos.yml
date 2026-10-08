@@ -2,8 +2,17 @@ name: Buscar Partidos Diario
 
 on:
   schedule:
-    - cron: '0 5 * * *' # Se ejecuta de forma automática todos los días a las 05:00 UTC
-  workflow_dispatch: # Permite forzar la ejecución manual desde la pestaña Actions de GitHub
+    - cron: '0 5 * * *' # Se ejecuta automáticamente todos los días a las 05:00 UTC
+  workflow_dispatch: # Activa el formulario manual con inputs en la pestaña Actions
+    inputs:
+      date_from:
+        description: 'Fecha de inicio (YYYY-MM-DD) - Dejar vacío para HOY'
+        required: false
+        default: ''
+      date_to:
+        description: 'Fecha de fin (YYYY-MM-DD) - Dejar vacío para HOY'
+        required: false
+        default: ''
 
 jobs:
   run-script:
@@ -25,6 +34,8 @@ jobs:
     - name: Ejecutar script de predicción
       env:
         THE_STATS_API_KEY: ${{ secrets.THE_STATS_API_KEY }}
+        INPUT_DATE_FROM: ${{ github.event.inputs.date_from }}
+        INPUT_DATE_TO: ${{ github.event.inputs.date_to }}
       run: python script.py
 
     - name: Guardar resultados en el repositorio
@@ -32,5 +43,5 @@ jobs:
         git config --global user.name "GitHub Action"
         git config --global user.email "action@github.com"
         git add partidos_del_dia.csv
-        git commit -m "Actualización diaria de partidos: $(date +'%Y-%m-%d')" || exit 0
+        git commit -m "Actualización de partidos (Consulta): $(date +'%Y-%m-%d')" || exit 0
         git push
