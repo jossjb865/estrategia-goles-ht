@@ -5,7 +5,7 @@ import pandas as pd
 
 # 1. Configuración de URL base y credenciales oficiales
 API_KEY = os.environ.get("THE_STATS_API_KEY")
-BASE_URL = "https://thestatsapi.com"  # URL corregida de forma estricta
+BASE_URL = "https://www.thestatsapi.com"  # URL corregida de forma estricta
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 def obtener_rango_fechas():
