@@ -14,11 +14,73 @@ API_KEY = os.environ.get("THE_STATS_API_KEY")
 BASE_URL = "https://api.thestatsapi.com/api"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+
 # Configuración de modelos ML
 LSTM_LOOKBACK = 5
 LSTM_UNITS = 32
 EPOCHS = 50
 BATCH_SIZE = 8
+
+
+def enviar_telegram_mensaje(mensaje: str):
+    """Envía un mensaje a Telegram si están configurados token y chat_id."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("[TELEGRAM] Token o Chat ID no configurados. Se omite el envío.")
+        return False
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": mensaje,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+
+    try:
+        response = requests.post(url, data=payload, timeout=20)
+        response.raise_for_status()
+        result = response.json()
+        if result.get("ok"):
+            print("[TELEGRAM] Mensaje enviado correctamente.")
+            return True
+        print(f"[TELEGRAM] Error al enviar: {result}")
+        return False
+    except Exception as e:
+        print(f"[TELEGRAM] Excepción al enviar: {e}")
+        return False
+
+
+def formatear_mensaje_resultado(partidos_filtrados, date_from, date_to):
+    if not partidos_filtrados:
+        return (
+            "<b>Estratégia Goles HT</b>\n"
+            f"<b>Rango:</b> {date_from} - {date_to}\n"
+            "<b>Resultado:</b> No se encontraron partidos que cumplan los criterios."
+        )
+
+    lineas = [
+        "<b>Estratégia Goles HT</b>",
+        f"<b>Rango:</b> {date_from} - {date_to}",
+        f"<b>Partidos encontrados:</b> {len(partidos_filtrados)}",
+        "",
+    ]
+
+    for i, p in enumerate(partidos_filtrados[:5], start=1):
+        local = p["Local"]
+        visitante = p["Visitante"]
+        confianza = p["Confianza Combinada"]
+        lineas.append(
+            f"{i}. <b>{local}</b> vs <b>{visitante}</b> - "
+            f"Confianza: <b>{confianza}%</b>"
+        )
+
+    if len(partidos_filtrados) > 5:
+        lineas.append(f"... y {len(partidos_filtrados) - 5} más.")
+
+    return "\n".join(lineas)
+
 
 class PoissonBivariadoModel:
     """Modelo de Distribución Bivariada de Poisson para predecir correlación de goles."""
@@ -258,6 +320,10 @@ def ejecutar_pipeline():
         ]
         pd.DataFrame(columns=columnas).to_csv("partidos_del_dia.csv", index=False)
         print(f"\nFinalizado. Ningún partido cumplió las condiciones para {d_from} / {d_to}.")
+
+    mensaje = formatear_mensaje_resultado(partidos_filtrados, d_from, d_to)
+    enviar_telegram_mensaje(mensaje)
+
 
 if __name__ == "__main__":
     if not API_KEY:
