@@ -5,7 +5,7 @@ import pandas as pd
 
 # 1. Configuración de URL base y credenciales oficiales
 API_KEY = os.environ.get("THE_STATS_API_KEY")
-BASE_URL = "https://www.thestatsapi.com"  # URL corregida de forma estricta
+BASE_URL = "https://api.thestatsapi.com/api"  # URL corregida a endpoint oficial
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 def obtener_rango_fechas():
@@ -32,6 +32,7 @@ def obtener_partidos_jornada(date_from, date_to):
     
     print(f"[DEBUG] URL de Jornada: {response.url}")
     print(f"[DEBUG] Código de Estado: {response.status_code}")
+    print(f"[DEBUG] Respuesta (primeros 500 chars): {response.text[:500]}")
     
     # Si hay un error de rate limit (429) o credenciales (401), se interrumpe aquí de forma clara
     response.raise_for_status()
@@ -58,6 +59,7 @@ def calcular_porcentaje_ht_over05(team_id, condicion):
     
     if response.status_code != 200:
         print(f"[ERROR CRÍTICO HISTORIAL] Código {response.status_code} para el equipo {team_id}.")
+        print(f"[DEBUG] Respuesta: {response.text[:500]}")
         response.raise_for_status()
         
     partidos_historicos = response.json().get("data", [])
@@ -88,6 +90,7 @@ def calcular_porcentaje_ht_over05(team_id, condicion):
         # Validación de integridad de la cuota en llamadas secundarias individuales
         if detalle_res.status_code != 200:
             print(f"[ERROR CRÍTICO DETALLE] Falló el partido {match_id}. Status: {detalle_res.status_code}")
+            print(f"[DEBUG] Respuesta: {detalle_res.text[:500]}")
             detalle_res.raise_for_status()
             
         score = detalle_res.json().get("data", {}).get("score", {})
