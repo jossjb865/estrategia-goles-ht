@@ -14,6 +14,10 @@ API_KEY = os.environ.get("THE_STATS_API_KEY")
 BASE_URL = "https://api.thestatsapi.com/api"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
+# 2. Configuración de Telegram
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
 # Configuración de modelos ML
 LSTM_LOOKBACK = 5  # Ventana de historia para LSTM
 LSTM_UNITS = 32
@@ -169,6 +173,108 @@ class LSTMMomentumPredictor:
         momentum = np.mean(np.diff(goals_array[-3:]))  # Cambio promedio últimos 3 partidos
         
         return float(y_pred), float(momentum)
+
+
+class TelegramNotifier:
+    """
+    Gestor de notificaciones a Telegram.
+    Envía mensajes sobre los partidos con mayor probabilidad.
+    """
+    
+    def __init__(self, bot_token, chat_id):
+        self.bot_token = bot_token
+        self.chat_id = chat_id
+        self.api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    
+    def validar_credenciales(self):
+        """Verifica que las credenciales de Telegram estén configuradas."""
+        if not self.bot_token or not self.chat_id:
+            print("[⚠️ WARNING] Credenciales de Telegram no configuradas.")
+            print("  Variables requeridas: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID")
+            return False
+        return True
+    
+    def enviar_mensaje(self, mensaje):
+        """Envía un mensaje a Telegram."""
+        if not self.validar_credenciales():
+            return False
+        
+        try:
+            payload = {
+                "chat_id": self.chat_id,
+                "text": mensaje,
+                "parse_mode": "HTML"
+            }
+            
+            response = requests.post(self.api_url, json=payload)
+            
+            if response.status_code == 200:
+                print(f"✓ Mensaje enviado a Telegram")
+                return True
+            else:
+                print(f"✗ Error enviando a Telegram: {response.status_code}")
+                print(f"  Respuesta: {response.text}")
+                return False
+        except Exception as e:
+            print(f"✗ Excepción al enviar a Telegram: {str(e)}")
+            return False
+    
+    def enviar_top_10_partidos(self, partidos_df):
+        """
+        Envía notificación con los top 10 partidos.
+        """
+        if partidos_df.empty:
+            mensaje = "🔴 No hay partidos que cumplan los criterios de análisis para hoy."
+            self.enviar_mensaje(mensaje)
+            return
+        
+        # Ordenar por confianza combinada y tomar top 10
+        top_10 = partidos_df.nlargest(10, "Confianza Combinada")
+        
+        # Construir encabezado
+        mensaje = "🎯 <b>TOP 10 PARTIDOS - GOLES EN PRIMER TIEMPO (HT)</b>\n"
+        mensaje += "=" * 50 + "\n\n"
+        
+        # Añadir cada partido
+        for idx, (_, partido) in enumerate(top_10.iterrows(), 1):
+            fecha = partido["Fecha UTC"][:10]  # Solo la fecha
+            hora = partido["Fecha UTC"][11:16]   # HH:MM
+            
+            local = partido["Local"]
+            visitante = partido["Visitante"]
+            confianza = partido["Confianza Combinada"]
+            prob_local = partido["% HT Over 0.5 Local (Poisson)"]
+            prob_visitante = partido["% HT Over 0.5 Visitante (Poisson)"]
+            
+            # Asignar emoji según confianza
+            if confianza >= 90:
+                emoji = "🔥"
+            elif confianza >= 85:
+                emoji = "⚡"
+            else:
+                emoji = "📊"
+            
+            mensaje += f"{emoji} <b>#{idx}</b> | Confianza: <b>{confianza:.1f}%</b>\n"
+            mensaje += f"   {local} <b>vs</b> {visitante}\n"
+            mensaje += f"   📅 {fecha} ⏰ {hora}\n"
+            mensaje += f"   Local: {prob_local:.1f}% | Visitante: {prob_visitante:.1f}%\n"
+            mensaje += "\n"
+        
+        # Añadir footer
+        mensaje += "=" * 50 + "\n"
+        mensaje += f"📊 Total partidos analizados: {len(partidos_df)}\n"
+        mensaje += f"🔔 Actualizado: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        mensaje += "\n<i>Sistema de predicción: Poisson Bivariado + LSTM Momentum</i>"
+        
+        self.enviar_mensaje(mensaje)
+    
+    def enviar_resumen_ejecucion(self, total_analizado, top_10_count):
+        """Envía un resumen de la ejecución."""
+        mensaje = f"✅ <b>Análisis completado</b>\n"
+        mensaje += f"📊 Partidos analizados: {total_analizado}\n"
+        mensaje += f"🎯 Top 10 seleccionados: {top_10_count}"
+        
+        self.enviar_mensaje(mensaje)
 
 
 def obtener_rango_fechas():
@@ -355,6 +461,7 @@ def ejecutar_pipeline():
             print(f"  Local: Poisson={home_pct:.2f}% | LSTM={home_lstm:.2f}% | {home_stats}")
             print(f"  Visitante: Poisson={away_pct:.2f}% | LSTM={away_lstm:.2f}% | {away_stats}")
     
+    # Guardar CSV
     if partidos_filtrados:
         df = pd.DataFrame(partidos_filtrados)
         df.to_csv("partidos_del_dia.csv", index=False)
@@ -366,8 +473,22 @@ def ejecutar_pipeline():
             "% HT Over 0.5 Local (LSTM)", "% HT Over 0.5 Visitante (LSTM)",
             "Confianza Combinada", "Stats Local", "Stats Visitante"
         ]
-        pd.DataFrame(columns=columnas).to_csv("partidos_del_dia.csv", index=False)
+        df = pd.DataFrame(columns=columnas)
+        df.to_csv("partidos_del_dia.csv", index=False)
         print(f"\nFinalizado. Ningún partido cumplió las condiciones para {d_from} / {d_to}.")
+    
+    # 🔔 ENVIAR NOTIFICACIONES A TELEGRAM
+    print("\n" + "="*60)
+    print("📢 Iniciando envío de notificaciones a Telegram...")
+    print("="*60)
+    
+    notificador = TelegramNotifier(TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID)
+    
+    if partidos_filtrados:
+        df = pd.read_csv("partidos_del_dia.csv")
+        notificador.enviar_top_10_partidos(df)
+    else:
+        notificador.enviar_mensaje("🔴 No hay partidos que cumplan los criterios de análisis para hoy.")
 
 if __name__ == "__main__":
     if not API_KEY:
