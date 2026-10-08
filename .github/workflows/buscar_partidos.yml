@@ -50,6 +50,8 @@ jobs:
     - name: Ejecutar script de predicción
       env:
         THE_STATS_API_KEY: ${{ secrets.THE_STATS_API_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         INPUT_DATE_FROM: ${{ github.event.inputs.date_from }}
         INPUT_DATE_TO: ${{ github.event.inputs.date_to }}
       run: |
