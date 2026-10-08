@@ -3,9 +3,9 @@ import datetime
 import requests
 import pandas as pd
 
-# Configuración de URL base y credenciales oficiales según la documentación
+# 1. Configuración de URL base y credenciales oficiales
 API_KEY = os.environ.get("THE_STATS_API_KEY")
-BASE_URL = "https://thestatsapi.com"
+BASE_URL = "https://thestatsapi.com"  # URL corregida de forma estricta
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 def obtener_rango_fechas():
@@ -19,7 +19,7 @@ def obtener_rango_fechas():
     return date_from, date_to
 
 def obtener_partidos_jornada(date_from, date_to):
-    """Obtiene la lista de partidos programados e imprime metadatos de diagnóstico."""
+    """Obtiene la lista de partidos programados usando el paso seguro de parámetros."""
     url = f"{BASE_URL}/football/matches"
     params = {
         "date_from": date_from,
@@ -33,11 +33,10 @@ def obtener_partidos_jornada(date_from, date_to):
     print(f"[DEBUG] URL de Jornada: {response.url}")
     print(f"[DEBUG] Código de Estado: {response.status_code}")
     
-    # Si hay un error de rate limit (429) o credenciales (401), rompemos el flujo para ver el log real
+    # Si hay un error de rate limit (429) o credenciales (401), se interrumpe aquí de forma clara
     response.raise_for_status()
     
     res_json = response.json()
-    # Diagnóstico del bloque 'meta' devuelto por la API
     meta = res_json.get("meta", {})
     print(f"[DIAGNÓSTICO JORNADA] Total partidos en rango: {meta.get('total', 0)} | Total páginas: {meta.get('total_pages', 0)}")
     
@@ -46,32 +45,31 @@ def obtener_partidos_jornada(date_from, date_to):
 def calcular_porcentaje_ht_over05(team_id, condicion):
     """
     Consulta una muestra controlada de 10 partidos del equipo.
-    Cualquier respuesta HTTP fallida (como un 429) detendrá el script con un error visible.
+    Cualquier respuesta HTTP fallida detendrá el script para auditoría.
     """
     url = f"{BASE_URL}/football/matches"
     params = {
         "team_id": team_id,
         "status": "finished",
-        "per_page": 10  # Reducido estrictamente a los 10 partidos más recientes
+        "per_page": 10  # Reducido estrictamente a los últimos 10 partidos globales
     }
     
     response = requests.get(url, headers=HEADERS, params=params)
     
-    # Forzar detención si la API responde con 429 (Rate Limit) o 401/404 para no camuflar el resultado
     if response.status_code != 200:
-        print(f"[ERROR CRÍTICO HISTORIAL] Código {response.status_code} para el equipo {team_id}. Deteniendo ejecución para proteger cuota.")
+        print(f"[ERROR CRÍTICO HISTORIAL] Código {response.status_code} para el equipo {team_id}.")
         response.raise_for_status()
         
     partidos_historicos = response.json().get("data", [])
     if not partidos_historicos:
         return 0
 
-    # Orden cronológico (más recientes primero)
+    # Orden cronológico manual (más recientes primero)
     partidos_historicos.sort(key=lambda x: x.get("utc_date", ""), reverse=True)
         
     partidos_validos_procesados = 0
     partidos_con_goles_ht = 0
-    MUESTRA_OBJETIVO = 3  # Evaluamos los últimos 3 partidos válidos dentro de la muestra de 10 para mitigar ráfagas
+    MUESTRA_OBJETIVO = 3  # Evaluamos una muestra pequeña de 3 partidos válidos en rol para mitigar ráfagas
     
     for p_resumido in partidos_historicos:
         if partidos_validos_procesados >= MUESTRA_OBJETIVO:
@@ -87,9 +85,9 @@ def calcular_porcentaje_ht_over05(team_id, condicion):
         detalle_url = f"{BASE_URL}/football/matches/{match_id}"
         detalle_res = requests.get(detalle_url, headers=HEADERS)
         
-        # Si la llamada individual al detalle falla por Rate Limit, lanzamos la excepción inmediatamente
+        # Validación de integridad de la cuota en llamadas secundarias individuales
         if detalle_res.status_code != 200:
-            print(f"[ERROR CRÍTICO DETALLE] Falló la petición del partido {match_id}. Status: {detalle_res.status_code}")
+            print(f"[ERROR CRÍTICO DETALLE] Falló el partido {match_id}. Status: {detalle_res.status_code}")
             detalle_res.raise_for_status()
             
         score = detalle_res.json().get("data", {}).get("score", {})
@@ -123,11 +121,11 @@ def ejecutar_pipeline():
         home_name = partido["home_team"]["name"]
         away_name = partido["away_team"]["name"]
         
-        # Estos métodos ahora tienen 'raise_for_status()', por lo que si hay un error de API, el bucle se detiene
+        # Pipeline secuencial seguro controlado por raise_for_status()
         home_pct = calcular_porcentaje_ht_over05(home_id, "home")
         away_pct = calcular_porcentaje_ht_over05(away_id, "away")
         
-        UMBRAL = 66.0  # Ajustado de forma coherente a la muestra reducida (2 de 3 partidos válidos)
+        UMBRAL = 66.0  # Coherente con al menos 2 partidos de 3 válidos con gol al descanso
         if home_pct >= UMBRAL and away_pct >= UMBRAL:
             partidos_filtrados.append({
                 "ID Partido": match_id,
@@ -150,6 +148,6 @@ def ejecutar_pipeline():
 
 if __name__ == "__main__":
     if not API_KEY:
-        print("Error: No se detectó la variable de entorno THE_STATS_API_KEY.")
+        print("Error crítico: No se detectó la variable de entorno THE_STATS_API_KEY.")
     else:
         ejecutar_pipeline()
