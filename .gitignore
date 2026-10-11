@@ -1,4 +1,37 @@
+# Directorios
 __pycache__/
+.pytest_cache/
+.venv/
+venv/
+env/
+
+# Archivos Python
 *.pyc
-.env
+*.pyo
+*.egg-info/
+*.egg
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
+
+# Entorno
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Datos
+*.csv
+partidos_del_dia.csv
+
+# TensorFlow
+*.h5
+*.pb
